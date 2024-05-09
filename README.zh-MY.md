@@ -60,7 +60,6 @@
 - 
 5.说明文件
 - 1.README.zh-MY.md
-- 2.gitignore 
 
 ## 二.导出 RKNPU 模型说明
 

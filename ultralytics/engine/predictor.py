@@ -375,8 +375,9 @@ class BasePredictor:
 
         # Save images
         else:
-            cv2.imwrite(save_path, im)
-
+            # cv2.imwrite(save_path, im) #解决保存图片时的中文路径乱码问题
+            cv2.imencode('.jpg', im)[1].tofile(save_path)
+			
     def show(self, p=""):
         """Display an image in a window using OpenCV imshow()."""
         im = self.plotted_img

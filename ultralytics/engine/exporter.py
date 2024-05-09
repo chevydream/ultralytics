@@ -112,6 +112,7 @@ def export_formats():
         ["TensorFlow.js", "tfjs", "_web_model", True, False],
         ["PaddlePaddle", "paddle", "_paddle_model", True, True],
         ["NCNN", "ncnn", "_ncnn_model", True, True],
+        ["RKNN", "rknn", "_rknnopt.torchscript", True, False],
     ]
     return pandas.DataFrame(x, columns=["Format", "Argument", "Suffix", "CPU", "GPU"])
 
@@ -183,7 +184,7 @@ class Exporter:
         flags = [x == fmt for x in fmts]
         if sum(flags) != 1:
             raise ValueError(f"Invalid export format='{fmt}'. Valid formats are {fmts}")
-        jit, onnx, xml, engine, coreml, saved_model, pb, tflite, edgetpu, tfjs, paddle, ncnn = flags  # export booleans
+        jit, onnx, xml, engine, coreml, saved_model, pb, tflite, edgetpu, tfjs, paddle, ncnn, rknn = flags  # export booleans
 
         # Device
         if fmt == "engine" and self.args.device is None:
@@ -315,6 +316,8 @@ class Exporter:
             f[10], _ = self.export_paddle()
         if ncnn:  # NCNN
             f[11], _ = self.export_ncnn()
+        if rknn:  # RKNN
+            f[12], _ = self.export_rknn()
 
         # Finish
         f = [str(x) for x in f if x]  # filter out '' and None
@@ -374,6 +377,33 @@ class Exporter:
         else:
             ts.save(str(f), _extra_files=extra_files)
         return f, None
+
+    @try_export
+    def export_rknn(self, prefix=colorstr("RKNN:")):
+        """YOLOv8 RKNN model export."""
+        LOGGER.info(f"\n{prefix} starting export with torch {torch.__version__}...")
+
+        # 之前用的导出: rknnopt
+        # ts = torch.jit.trace(self.model, self.im, strict=False)
+        # f = str(self.file).replace(self.file.suffix, f"_rknnopt.torchscript")
+        # torch.jit.save(ts, str(f))
+
+        # 最新用的导出: onnx(TODO 待验证)
+        f = str(self.file).replace(self.file.suffix, f'.onnx')
+        opset_version = self.args.opset or get_latest_opset()
+        torch.onnx.export(
+            self.model,
+            self.im[0:1,:,:,:],
+            f,
+            verbose=False,
+            opset_version=12,
+            do_constant_folding=True,  # WARNING: DNN inference with torch>=1.12 may require do_constant_folding=False
+            input_names=['images'])
+
+        LOGGER.info(f"\n{prefix} feed {f} to RKNN-Toolkit or RKNN-Toolkit2 to generate RKNN model.\n" 
+                    "Refer https://github.com/airockchip/rknn_model_zoo/tree/main/models/CV/object_detection/yolo")
+        return f, None
+
 
     @try_export
     def export_onnx(self, prefix=colorstr("ONNX:")):
@@ -437,7 +467,64 @@ class Exporter:
         return f, model_onnx
 
     @try_export
-    def export_openvino(self, prefix=colorstr("OpenVINO:")):
+    def export_openvino(self, prefix=colorstr("OpenVINO:")): # 从8.1.0上拿来的转换函数
+        """YOLOv8 OpenVINO export."""
+        check_requirements("openvino-dev>=2023.0")  # requires openvino-dev: https://pypi.org/project/openvino-dev/
+        import openvino.runtime as ov  # noqa
+        from openvino.tools import mo  # noqa
+
+        LOGGER.info(f"\n{prefix} starting export with openvino {ov.__version__}...")
+        f = str(self.file).replace(self.file.suffix, f"_openvino_model{os.sep}")
+        fq = str(self.file).replace(self.file.suffix, f"_int8_openvino_model{os.sep}")
+        f_onnx = self.file.with_suffix(".onnx")
+        f_ov = str(Path(f) / self.file.with_suffix(".xml").name)
+        fq_ov = str(Path(fq) / self.file.with_suffix(".xml").name)
+
+        def serialize(ov_model, file):
+            """Set RT info, serialize and save metadata YAML."""
+            ov_model.set_rt_info("YOLOv8", ["model_info", "model_type"])
+            ov_model.set_rt_info(True, ["model_info", "reverse_input_channels"])
+            ov_model.set_rt_info(114, ["model_info", "pad_value"])
+            ov_model.set_rt_info([255.0], ["model_info", "scale_values"])
+            ov_model.set_rt_info(self.args.iou, ["model_info", "iou_threshold"])
+            ov_model.set_rt_info([v.replace(" ", "_") for v in self.model.names.values()], ["model_info", "labels"])
+            if self.model.task != "classify":
+                ov_model.set_rt_info("fit_to_window_letterbox", ["model_info", "resize_type"])
+
+            ov.serialize(ov_model, file)  # save
+            yaml_save(Path(file).parent / "metadata.yaml", self.metadata)  # add metadata.yaml
+
+        ov_model = mo.convert_model(
+            f_onnx, model_name=self.pretty_name, framework="onnx", compress_to_fp16=self.args.half
+        )  # export
+
+        if self.args.int8:
+            assert self.args.data, "INT8 export requires a data argument for calibration, i.e. 'data=coco8.yaml'"
+            check_requirements("nncf>=2.5.0")
+            import nncf
+
+            def transform_fn(data_item):
+                """Quantization transform function."""
+                im = data_item["img"].numpy().astype(np.float32) / 255.0  # uint8 to fp16/32 and 0 - 255 to 0.0 - 1.0
+                return np.expand_dims(im, 0) if im.ndim == 3 else im
+
+            # Generate calibration data for integer quantization
+            LOGGER.info(f"{prefix} collecting INT8 calibration images from 'data={self.args.data}'")
+            data = check_det_dataset(self.args.data)
+            dataset = YOLODataset(data["val"], data=data, imgsz=self.imgsz[0], augment=False)
+            quantization_dataset = nncf.Dataset(dataset, transform_fn)
+            ignored_scope = nncf.IgnoredScope(types=["Multiply", "Subtract", "Sigmoid"])  # ignore operation
+            quantized_ov_model = nncf.quantize(
+                ov_model, quantization_dataset, preset=nncf.QuantizationPreset.MIXED, ignored_scope=ignored_scope
+            )
+            serialize(quantized_ov_model, fq_ov)
+            return fq, None
+
+        serialize(ov_model, f_ov)
+        return f, None
+
+    @try_export
+    def export_openvino1(self, prefix=colorstr("OpenVINO:")): # 原始的转换函数(TODO 可以再试试是否可用了)
         """YOLOv8 OpenVINO export."""
         check_requirements(f'openvino{"<=2024.0.0" if ARM64 else ">=2024.0.0"}')  # fix OpenVINO issue on ARM64
         import openvino as ov

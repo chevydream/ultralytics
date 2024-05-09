@@ -360,7 +360,8 @@ class LoadImagesAndVideos:
                         self._new_video(self.files[self.count])
             else:
                 self.mode = "image"
-                im0 = cv2.imread(path)  # BGR
+                # im0 = cv2.imread(path)  # BGR 解决加载图片时的中文路径乱码问题
+                im0 = cv2.imdecode(np.fromfile(path, dtype=np.uint8), -1) # BGR
                 if im0 is None:
                     raise FileNotFoundError(f"Image Not Found {path}")
                 paths.append(path)
