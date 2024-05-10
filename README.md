@@ -7,7 +7,7 @@
 - 2）测试：日常识别率测试
 - 3）导出：dnn的onnx模型，rknn的rknnopt模型，VINO的IR模型。
 
-###8.2.1.为测试而做的修改 
+### 8.2.1.为测试而做的修改 
 - 1 default.yaml  
 - 2 loaders.py  
 - 3 utils.py  
@@ -17,17 +17,17 @@
 - 7 plotting.py  
 - 8 patches.py  
 
-###8.2.2.为rknn而做的修改
+### 8.2.2.为rknn而做的修改
 - 1.default.yaml
 - 2.exporter.py
 - 3.head.py
 - 4.autobackend.py
 
-###8.2.3.为VINO而做的修改
+### 8.2.3.为VINO而做的修改
 - 1.exporter.py  
 说明: 新版ultralytics对torch和openvino的版本要求太高了, 5.28是win7系统, 不支持太高的版本, 故把ultralytics8.1.0上的老函数又找回来了
 
-###8.2.4.自己写的测试文件
+### 8.2.4.自己写的测试文件
 1.数据集
 - 1.myData_CarHead.yaml
 - 2.myData_cpc.yaml
