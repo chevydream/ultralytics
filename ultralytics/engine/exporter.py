@@ -383,22 +383,22 @@ class Exporter:
         """YOLOv8 RKNN model export."""
         LOGGER.info(f"\n{prefix} starting export with torch {torch.__version__}...")
 
-        # 之前用的导出: rknnopt
-        # ts = torch.jit.trace(self.model, self.im, strict=False)
-        # f = str(self.file).replace(self.file.suffix, f"_rknnopt.torchscript")
-        # torch.jit.save(ts, str(f))
+        # 之前用的导出: rknnOpt
+        ts = torch.jit.trace(self.model, self.im, strict=False)
+        f = str(self.file).replace(self.file.suffix, f"_rknnopt.torchscript")
+        torch.jit.save(ts, str(f))
 
-        # 最新用的导出: onnx(TODO 待验证)
-        f = str(self.file).replace(self.file.suffix, f'.onnx')
-        opset_version = self.args.opset or get_latest_opset()
-        torch.onnx.export(
-            self.model,
-            self.im[0:1,:,:,:],
-            f,
-            verbose=False,
-            opset_version=12,
-            do_constant_folding=True,  # WARNING: DNN inference with torch>=1.12 may require do_constant_folding=False
-            input_names=['images'])
+        # 最新用的导出: onnx(meng TODO rknn的修改,暂未启用)
+        # f = str(self.file).replace(self.file.suffix, f'.onnx')
+        # opset_version = self.args.opset or get_latest_opset()
+        # torch.onnx.export(
+        #     self.model,
+        #     self.im[0:1,:,:,:],
+        #     f,
+        #     verbose=False,
+        #     opset_version=12,
+        #     do_constant_folding=True,  # WARNING: DNN inference with torch>=1.12 may require do_constant_folding=False
+        #     input_names=['images'])
 
         LOGGER.info(f"\n{prefix} feed {f} to RKNN-Toolkit or RKNN-Toolkit2 to generate RKNN model.\n" 
                     "Refer https://github.com/airockchip/rknn_model_zoo/tree/main/models/CV/object_detection/yolo")
@@ -524,7 +524,7 @@ class Exporter:
         return f, None
 
     @try_export
-    def export_openvino1(self, prefix=colorstr("OpenVINO:")): # 原始的转换函数(TODO 可以再试试是否可用了)
+    def export_openvino1(self, prefix=colorstr("OpenVINO:")): # 原始的转换函数
         """YOLOv8 OpenVINO export."""
         check_requirements(f'openvino{"<=2024.0.0" if ARM64 else ">=2024.0.0"}')  # fix OpenVINO issue on ARM64
         import openvino as ov

@@ -700,23 +700,20 @@ def plot_labels(boxes, cls, names=(), save_dir=Path(""), on_plot=None):
 
     # Matplotlib labels
     ax = plt.subplots(2, 2, figsize=(8, 8), tight_layout=True)[1].ravel()
-    y = ax[0].hist(cls, bins=np.linspace(0, nc, nc + 1) - 0.5, rwidth=0.8)
-	
-    # y, _, patches = ax[0].hist(cls, bins=np.linspace(0, nc, nc + 1) - 0.5, rwidth=0.8)
-    # 在Matplotlib直方图上显示柱子的计数, 暂时还没调通 TODO
-    # for pp in patches:
-    #    x = (pp._x0 + pp._x1)/2
-    #    y = pp._y1 + 0.05
-    #    plt.text(x, y, pp._y1)
+    y, bins, patches = ax[0].hist(cls, bins=np.linspace(0, nc, nc + 1) - 0.5, rwidth=0.8)
 
+    # 在直方图柱子的顶部添加计数标注
     for i in range(nc):
-        y[2].patches[i].set_color([x / 255 for x in colors(i)])
+        ax[0].annotate(int(y[i]), xy=(bins[i], y[i]), xytext=(bins[i], y[i]))
+        patches[i].set_color([x / 255 for x in colors(i)])
+
     ax[0].set_ylabel("instances")
     if 0 < len(names) < 30:
         ax[0].set_xticks(range(len(names)))
         ax[0].set_xticklabels(list(names.values()), rotation=90, fontsize=10)
     else:
         ax[0].set_xlabel("classes")
+
     seaborn.histplot(x, x="x", y="y", ax=ax[2], bins=50, pmax=0.9)
     seaborn.histplot(x, x="width", y="height", ax=ax[3], bins=50, pmax=0.9)
 

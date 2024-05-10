@@ -271,7 +271,7 @@ def TypeDetect(dir_path):
         llcFlag = 0
         typeNum = 0
         mutiNames = {}
-        for rst in reversed(results):   # TODO 这里允许一次处理多张图片
+        for rst in reversed(results):   # 当BatchSize不是1时, results就是多个了
             det = rst.boxes
             for d in det:
                 cls, conf = d.cls.squeeze(), d.conf.squeeze()
@@ -330,7 +330,7 @@ def TypeDetect(dir_path):
         # 8.2 识别结果分析（识别了几个轮）
         lunNum = 0
         if recTypeFlag == 1 or recTypeFlag == 3:
-            for rst in reversed(results_lun):  # TODO 这里允许一次处理多张图片
+            for rst in reversed(results_lun):  # 当BatchSize不是1时, results就是多个了
                 det = rst.boxes
                 for d in det:
                     cls, conf = d.cls.squeeze(), d.conf.squeeze()
@@ -341,7 +341,7 @@ def TypeDetect(dir_path):
         hsjNum = 0
         hsjconf = 0.0
         if recTypeFlag == 4:
-            for rst in reversed(results):  # TODO 这里允许一次处理多张图片
+            for rst in reversed(results):  # 当BatchSize不是1时, results就是多个了
                 det = rst.boxes
                 for d in det:
                     cls, conf = d.cls.squeeze(), d.conf.squeeze()

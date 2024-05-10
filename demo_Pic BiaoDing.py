@@ -54,6 +54,12 @@ def cal_iou(box1, box2):
     :param box2: = [left2, top2, right2, bottom2]
     :return:
     """
+    left1 = box1.xmin
+    top1 = box1.ymin
+    right1 = box1.xmin
+    bottom1 = box1.xmin
+
+
     left1, top1, right1, bottom1 = box1
     left2, top2, right2, bottom2 = box2
     # 计算每个矩形的面积
@@ -77,13 +83,16 @@ def cal_iou(box1, box2):
 # xywhn 格式计算
 # xywhn 标记格式：中心坐标，宽度和高度
 # xyxyn 标记格式：左上坐标，右下坐标
-# 后缀n 表示已经归一化处理
-def bbox_iou_xywhn(box1, box2, set_threshold=None, threshold=0.75):
+def bbox_iou_xywh(box1, box2):
+    flag = 0
+
     #如果box1,box2是一维数组,就复制成2维数组
     if box1.ndim == 1:
         box1 = np.tile(box1[np.newaxis, :], (2, 1))
+        flag += 1
     if box2.ndim == 1:
         box2 = np.tile(box2[np.newaxis, :], (2, 1))
+        flag += 1
 
     # 将box1和box2转换回xyxy格式
     box1_xy = box1[..., :2] - (box1[..., 2:] / 2.)
@@ -107,10 +116,8 @@ def bbox_iou_xywhn(box1, box2, set_threshold=None, threshold=0.75):
     # 计算IoU并返回结果
     iou = inter_area / union_area
 
-    # 大于阈值的置成1，小于阈值的置成0
-    if set_threshold:
-        iou[iou >= threshold] = 1
-        iou[iou < threshold] = 0
+    if flag == 2:
+        iou = iou[0][0]
 
     return iou
 
@@ -131,6 +138,18 @@ def TypeDetect():
     save_path2 = 'D:/目标标定iou_{:}'.format(curtime)
     if not os.path.exists(save_path2):
         os.mkdir(save_path2)
+        save_path = '{:}/未知/'.format(save_path2)
+        os.mkdir(save_path)
+        save_path = '{:}/识错/'.format(save_path2)
+        os.mkdir(save_path)
+        save_path = '{:}/多检/'.format(save_path2)
+        os.mkdir(save_path)
+        save_path = '{:}/漏检/'.format(save_path2)
+        os.mkdir(save_path)
+        save_path = '{:}/正确/'.format(save_path2)
+        os.mkdir(save_path)
+        save_path = '{:}/背景/'.format(save_path2)
+        os.mkdir(save_path)
 
     # 3 遍历文件夹下的所有图
     filelist = []
@@ -143,7 +162,7 @@ def TypeDetect():
         raise FileNotFoundError(f'{dir_path} does not exist')
 
     totalNum = len(files)
-    iouErrNum = 0
+    iouErrNum = [0,0,0,0,0,0]
     iouCurNum = 0
     for filePath in reversed(files):
 
@@ -158,8 +177,20 @@ def TypeDetect():
         if os.path.exists(label_path):
             if os.path.getsize(label_path) > 0:
                 boxes = torch.from_numpy(np.loadtxt(label_path).reshape(-1, 5))
-                # 去除class_labels的标记列
+
+                # 去除特定的标签
+                boxes = boxes[boxes[:, 0] != 14]
+                boxes = boxes[boxes[:, 0] != 21]
+                boxes = boxes[boxes[:, 0] != 25]
+                boxes = boxes[boxes[:, 0] != 26]
+                boxes = boxes[boxes[:, 0] != 27]
+                boxes = boxes[boxes[:, 0] != 28]
+                boxes = boxes[boxes[:, 0] != 29]
+
+                # 获取类别和坐标
+                clses_info = boxes[:, 0]
                 boxes_info = boxes[:, 1:]
+
                 # 标签文件中class_labels的数量
                 realboxes_len = boxes_info.size()[0]
             else:
@@ -184,80 +215,106 @@ def TypeDetect():
         results = model.predict(source=im0, conf=myConf, iou=myIou)
 
         # 8 识别结果分析(找出:多检的,漏检的和错判的,存图)
-        iouErrFlag = 0
-        for rst in reversed(results):  # TODO 这里允许一次处理多张图片
-            det = rst.boxes
-
-            det_boxes = det.xywhn
-            recboxes_len = det_boxes.size()[0]
-
+        # iouErrFlag的取值范围: 0:未知, 1:识错, 2:多检, 3:漏检, 4:背景识别正确, 5:目标识别正确
+        iouErrFlag = [0,0,0,0,0,0]
+        for rst in reversed(results):  # 当BatchSize不是1时, results就是多个了
             # gpu转cpu 不转的话numpy会报错
             if (realboxes_len != 0):
                 boxes_info = boxes_info.cpu().numpy()
-            if (recboxes_len != 0):
-                det_boxes = det_boxes.cpu().numpy()
+                clses_info = clses_info.cpu().numpy()
+                clses_bak = clses_info.copy()
 
-            # iou原始值的写法  iou = bbox_iou_xywhn(det_boxes, boxes_info)
-            if realboxes_len != 0 and recboxes_len != 0:
-                iou = bbox_iou_xywhn(det_boxes, boxes_info, set_threshold=True, threshold=0.5)
-                total_sum = np.sum(iou)
-                if realboxes_len != recboxes_len or realboxes_len != total_sum:
-                    iouErrFlag = 1
-                    iouErrNum = iouErrNum + 1
-            else:
-                if realboxes_len == 0 and recboxes_len == 0:
-                    iouErrFlag = 2
+            recboxes_len = rst.boxes.xywhn.size()[0]
+
+            for box in rst.boxes:
+                det_cls = int(box.cls.cpu())
+                det_box = box.xywhn.cpu().numpy()
+
+                # 计算iou, 寻找重叠度最大的目标
+                maxIoU = 0
+                maxi = -1
+                for i in range(realboxes_len):
+                    iou = bbox_iou_xywh(det_box.squeeze(), boxes_info[i])
+                    if maxIoU < iou:
+                        maxIoU = iou
+                        maxi = i
+
+                if 0.7 <= maxIoU:
+                    clses_bak[maxi] = -1
+                    if clses_info[maxi] == det_cls:
+                        iouErrFlag[5] = 1  # 目标识别正确
+                        iouErrNum[5] += 1
+                    else:
+                        iouErrFlag[1] = 1  # 识错
+                        iouErrNum[1] += 1
                 else:
-                    iouErrFlag = 1
-                    iouErrNum = iouErrNum + 1
+                    iouErrFlag[2] = 1  # 多检
+                    iouErrNum[2] += 1
+
+            for i in range(realboxes_len):
+                if clses_bak[i] != -1:
+                    iouErrFlag[3] = 1  # 漏检
+                    iouErrNum[3] += 1
+
+            if realboxes_len == 0 and recboxes_len == 0:
+                iouErrFlag[4] = 1  # 背景识别正确
+                iouErrNum[4] += 1
+
+            if iouErrFlag[1] == 0 and iouErrFlag[2] == 0 \
+                    and iouErrFlag[3] == 0 and iouErrFlag[4] == 0 and iouErrFlag[5] == 0:
+                iouErrFlag[0] = 1  # 未知情况
+                iouErrNum[0] += 1
 
         # 9 按指定的要求存图
-        save_ImgPath = '{:}/{:}'.format(save_path2, fileName)
-        save_LabPath = '{:}/{:}txt'.format(save_path2, fileName[0:len(fileName) - 3])
+        for i in range(4): # iouErrFlag的取值范围: 0:未知, 1:识错, 2:多检, 3:漏检
+            name = ["未知", "识错", "多检", "漏检", "正确", "背景"]
+            if iouErrFlag[i] == 1:
+                # 构建图片和标签的目的路径
+                save_ImgPath = '{:}/{:}/{:}'.format(save_path2, name[i], fileName)
+                save_LabPath = '{:}/{:}/{:}txt'.format(save_path2, name[i], fileName[0:len(fileName) - 3])
 
-        # 9.1 提取标定和检测不一样的原始数据
-        if iouErrFlag == 1 and runControl == 1:
-            shutil.copyfile(filePath, save_ImgPath)
-            if (realboxes_len != 0):
-                shutil.copyfile(label_path, save_LabPath)
+                # 9.1 提取标定和检测不一样的原始数据
+                if runControl == 1:
+                    shutil.copyfile(filePath, save_ImgPath)
+                    if realboxes_len != 0:
+                        shutil.copyfile(label_path, save_LabPath)
 
-        # 9.2 提取标定和检测不一样的画框图(检测框)
-        if iouErrFlag == 1 and runControl == 2:
-            for r in results:
-                im_array = r.plot()  # 绘制预测结果的BGR numpy数组
-                img = cv2.cvtColor(im_array[..., ::-1], cv2.COLOR_BGR2RGB)
-            # cv2_imshow(img)  # 显示图像
-            cv2.imwrite(save_ImgPath, img)
+                # 9.2 提取标定和检测不一样的画框图(检测框)
+                if runControl == 2:
+                    for r in results:
+                        im_array = r.plot()  # 绘制预测结果的BGR numpy数组
+                        img = cv2.cvtColor(im_array[..., ::-1], cv2.COLOR_BGR2RGB)
+                    # cv2_imshow(img)  # 显示图像
+                    cv2.imwrite(save_ImgPath, img)
 
-        # 9.2 提取标定和检测不一样的画框图(标签框)
-        if iouErrFlag == 1 and runControl == 3:
-            width = im0.width
-            height = im0.height
-            if (realboxes_len != 0):
-                for r in boxes_info:
-                    first_point = (int(r[0]*width - r[2]*width/2), int(r[1]*height - r[3]*height/2))
-                    last_point = (int(r[0]*width + r[2]*width/2), int(r[1]*height + r[3]*height/2))
-                    cv2.rectangle(im0, first_point, last_point, (0, 255, 0), 2)
-            cv2.imwrite(save_ImgPath,im0)
+                # 9.3 提取标定和检测不一样的画框图(标签框)
+                if runControl == 3:
+                    width = im0.width
+                    height = im0.height
+                    if (realboxes_len != 0):
+                        for r in boxes_info:
+                            first_point = (int(r[0]*width - r[2]*width/2), int(r[1]*height - r[3]*height/2))
+                            last_point = (int(r[0]*width + r[2]*width/2), int(r[1]*height + r[3]*height/2))
+                            cv2.rectangle(im0, first_point, last_point, (0, 255, 0), 2)
+                    cv2.imwrite(save_ImgPath,im0)
 
-        # 9.3 提取标定和检测不一样的画框图(差异框)
-        if iouErrFlag == 1 and runControl == 4: #
-            for r in results:
-                im_array = r.plot()  # 绘制预测结果的BGR numpy数组
-                img = cv2.cvtColor(im_array[..., ::-1], cv2.COLOR_BGR2RGB)
+                # 9.4 提取标定和检测不一样的画框图(差异框)
+                if runControl == 4: #
+                    for r in results:
+                        im_array = r.plot()  # 绘制预测结果的BGR numpy数组
+                        img = cv2.cvtColor(im_array[..., ::-1], cv2.COLOR_BGR2RGB)
 
-            width = im0.width
-            height = im0.height
-            if (realboxes_len != 0):
-                for r in boxes_info:
-                    center = (int(r[0]*width), int(r[1]*height))
-                    radius = int((int(r[2]*width) + int(r[3]*height)) / 4)
-                    cv2.circle(img, center, radius, (0, 255, 0), 2)
+                    width = im0.width
+                    height = im0.height
+                    if (realboxes_len != 0):
+                        for r in boxes_info:
+                            center = (int(r[0]*width), int(r[1]*height))
+                            cv2.ellipse(img, center, (int(r[2]*width/2), int(r[3]*height/2)), 0, 0, 360, (0, 255, 0), 2)
 
-            # cv2_imshow(img)  # 显示图像
-            cv2.imwrite(save_ImgPath, img)
+                    # cv2_imshow(img)  # 显示图像
+                    cv2.imwrite(save_ImgPath, img)
 
-        # 9.4 给标定文件追加新检测出来的目标
+        # 10 给标定文件追加新检测出来的目标
         if runControl == 5:
             with open(label_path, 'r') as f:
                 data = f.readlines()
@@ -277,9 +334,11 @@ def TypeDetect():
                         result = f'{cat_num} {size_string}\n'
                         f.write(str(result))
 
-        # 10 打印进度
-        print(f'进度：{iouCurNum}/{totalNum}, 错{iouErrNum}, '
-              f'率{iouCurNum / (iouErrNum+iouCurNum):.2%}  ' + fileName)
+        # 11 打印进度
+        if iouCurNum % 10 == 0:
+            cuoNum = iouErrNum[0]+iouErrNum[1]+iouErrNum[2]+iouErrNum[3]
+            print(f'进度：{iouCurNum}/{totalNum}, 错{cuoNum}={iouErrNum[0]}+{iouErrNum[1]}+{iouErrNum[2]}+{iouErrNum[3]}, '
+                  f'率{(iouCurNum - cuoNum) / iouCurNum:.2%}  ' + fileName)
 
 
 

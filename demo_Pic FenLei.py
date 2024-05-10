@@ -123,7 +123,8 @@ def TypeDetect(dir_path):
         # 不要传入图片路径，否则图片数量越多，占用的内存越多，2万张图能吃光64G内存
         #results = model.predict(source=im0, conf=myConf, iou=myIou)
         #results = model.predict(source=filePath, conf=myConf, iou=myIou, save=True)  # 保存画框图像
-        results = model.predict(source=imgs, conf=myConf, iou=myIou)   # 多batch推理, save_txt=True
+        #results = model.predict(source=filePath, conf=myConf, iou=myIou, save_txt=True)  # 保存识别结果
+        results = model.predict(source=imgs, conf=myConf, iou=myIou)   # 多batch推理
 
         # 8 识别结果分析
         for i in range(myBatchSize): #对batch中的每一张图进行分析

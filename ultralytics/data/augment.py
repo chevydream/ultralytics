@@ -502,7 +502,7 @@ class RandomPerspective:
         x = xy[:, [0, 2, 4, 6]]
         y = xy[:, [1, 3, 5, 7]]
         return np.concatenate((x.min(1), y.min(1), x.max(1), y.max(1)), dtype=bboxes.dtype).reshape(4, n).T
-        # return np.concatenate((x.min(1), y.min(1), x.max(1), y.max(1))).reshape(4, n).T  # rknn的修改,暂未启用
+        # return np.concatenate((x.min(1), y.min(1), x.max(1), y.max(1))).reshape(4, n).T  # meng TODO rknn的修改,暂未启用
 
     def apply_segments(self, segments, M):
         """

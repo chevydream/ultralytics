@@ -22,7 +22,8 @@ PreModelCls_s       = "E:/DLModel/curWeights/yolov8s-cls.pt"
 #训练数据
 DataSets_CarHead    = "ultralytics/cfg/datasets_my/myData_CarHead.yaml"
 DataSets_cpc        = "ultralytics/cfg/datasets_my/myData_cpc.yaml"
-DataSets_G3         = "ultralytics/cfg/datasets_my/myData_g3.yaml"
+DataSets_G3         = "ultralytics/cfg/datasets_my/myData_G3.yaml"
+DataSets_G3Small    = "ultralytics/cfg/datasets_my/myData_G3-Small.yaml"
 DataSets_hsjlun     = "ultralytics/cfg/datasets_my/myData_hsjlun.yaml"
 DataSets_IVAS       = "ultralytics/cfg/datasets_my/myData_IVAS.yaml"
 DataSets_tempPlate  = "ultralytics/cfg/datasets_my/myData_tempPlate.yaml"
@@ -46,7 +47,6 @@ PreModel_jx     = "E:/DLRuns/detectV8/train20240508_104333/weights/best.pt"
 DataSets        = DataSets_G3
 GuolvFlag       = 6     #加载哪些标签: 1-加载所有标签, 2-门架加载部分样本（车轮）标签, 3-门架加载样本(车型 + 危险品)标签
                         #4-G3加载部分样本（车轮）标签, 5-G3加载（车轮 + 后视镜）标签, 6-G3加载样本（车型 + 危险品）标签
-
 #特别注意: 一定要记得清空标签缓存, 否则修改下面的过滤条件会不起作用
 
 #配置推荐: 250|1024|160; 250|128|320; 250|64|640;

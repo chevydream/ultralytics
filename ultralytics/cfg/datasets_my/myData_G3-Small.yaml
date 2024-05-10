@@ -9,26 +9,47 @@
 
 # Train/val/test sets as 1) dir: path/to/imgs, 2) file: path/to/imgs.txt, or 3) list: [path/to/imgs1, path/to/imgs2, ..]
 
-path: E:/DLDataSets/UCAS/images  # dataset root dir
+path: E:/DLDataSets/G3GQ-Small/images  # dataset root dir 高清G3的车型和wxp样本
+# path: E:/DLDataSets/g3BQ/images  # dataset root dir  标清G3的车型和wxp样本
 
 train: train  # train images (relative to 'path') 128 images
 val: val  # val images (relative to 'path') 128 images
 test:  # test images (optional)
 
-nc: 10
+nc: 25
 
-# Classes
+# Classes-车道车型（标清 和 高清）
 names:
-  0: person
-  1: bike
-  2: car
-  3: tricycle
-  4: smallTruck
-  5: bus
-  6: mediumTruck
-  7: largeTruck
-  8: unused
-  9: trafficLight
+  0: car1
+  1: keMian
+  2: car3
+  3: car4
+  4: truck1
+  5: truck2
+  6: truck3
+  7: truck4
+  8: truck5
+  9: truck6
+  10: huoMian
+  11: zhuan2
+  12: zhuan3
+  13: zhuan4
+  14: lun
+  15: wxp
+  16: car2
+  17: llc
+  18: zhuan5
+  19: zhuan6
+  20: truckN
+  21: hsj
+  22: car1gw3
+  23: trk2gw3
+  24: unUsed
+  # 25: chanche(zz)
+  # 26: chache(cc)
+  # 27: Xsanlun
+  # 28: Rsanlun
+  # 29: Dsanlun
 
 # Download script/URL (optional)
 #download: https://ultralytics.com/assets/coco128.zip
