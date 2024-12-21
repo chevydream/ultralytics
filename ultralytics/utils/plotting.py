@@ -333,7 +333,7 @@ class Annotator:
             lineType=cv2.LINE_AA,
         )
 
-    def box_label(self, box, label="", color=(128, 128, 128), txt_color=(255, 255, 255), rotated=False):
+    def box_label(self, box, label="", idx=0, color=(128, 128, 128), txt_color=(255, 255, 255), rotated=False):
         """
         Draws a bounding box to image with label.
 
@@ -370,10 +370,17 @@ class Annotator:
                 p1 = [int(b) for b in box[0]]
                 cv2.polylines(self.im, [np.asarray(box, dtype=int)], True, color, self.lw)  # cv2 requires nparray box
             else:
-                p1, p2 = (int(box[0]), int(box[1])), (int(box[2]), int(box[3]))
-                cv2.rectangle(self.im, p1, p2, color, thickness=self.lw, lineType=cv2.LINE_AA)
+                pt1, p2 = (int(box[0]), int(box[1])), (int(box[2]), int(box[3]))
+                cv2.rectangle(self.im, pt1, p2, color, thickness=self.lw, lineType=cv2.LINE_AA)
             if label:
                 w, h = cv2.getTextSize(label, 0, fontScale=self.sf, thickness=self.tf)[0]  # text width, height
+
+                #if rotated == False:
+                #    p1 = (int(box[0]), int(box[1]+(idx%4)*h))
+                #else:
+                #    p1 = (int(box[0]), int(box[1]))
+                p1 = (int(box[0]), int(box[1]))
+
                 h += 3  # add pixels to pad text
                 outside = p1[1] >= h  # label fits outside box
                 if p1[0] > self.im.shape[1] - w:  # shape is (h, w), check if label extend beyond right side of image
@@ -924,15 +931,20 @@ def plot_labels(boxes, cls, names=(), save_dir=Path(""), on_plot=None):
 
     # Matplotlib labels
     ax = plt.subplots(2, 2, figsize=(8, 8), tight_layout=True)[1].ravel()
-    y = ax[0].hist(cls, bins=np.linspace(0, nc, nc + 1) - 0.5, rwidth=0.8)
+    y, bins, patches = ax[0].hist(cls, bins=np.linspace(0, nc, nc + 1) - 0.5, rwidth=0.8)
+
+    # 在直方图柱子的顶部添加计数标注
     for i in range(nc):
-        y[2].patches[i].set_color([x / 255 for x in colors(i)])
+        ax[0].annotate(int(y[i]), xy=(bins[i], y[i]), xytext=(bins[i], y[i]))
+        patches[i].set_color([x / 255 for x in colors(i)])
+
     ax[0].set_ylabel("instances")
     if 0 < len(names) < 30:
         ax[0].set_xticks(range(len(names)))
         ax[0].set_xticklabels(list(names.values()), rotation=90, fontsize=10)
     else:
         ax[0].set_xlabel("classes")
+
     seaborn.histplot(x, x="x", y="y", ax=ax[2], bins=50, pmax=0.9)
     seaborn.histplot(x, x="width", y="height", ax=ax[3], bins=50, pmax=0.9)
 
@@ -1112,7 +1124,7 @@ def plot_images(
                     c = names.get(c, c) if names else c
                     if labels or conf[j] > conf_thres:
                         label = f"{c}" if labels else f"{c} {conf[j]:.1f}"
-                        annotator.box_label(box, label, color=color, rotated=is_obb)
+                        annotator.box_label(box, label, 0, color=color, rotated=is_obb)
 
             elif len(classes):
                 for c in classes:

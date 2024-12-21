@@ -125,6 +125,7 @@ class AutoBackend(nn.Module):
             ncnn,
             imx,
             triton,
+            rknn,
         ) = self._model_type(w)
         fp16 &= pt or jit or onnx or xml or engine or nn_module or triton  # FP16
         nhwc = coreml or saved_model or pb or tflite or edgetpu  # BHWC formats (vs torch BCWH)
@@ -645,6 +646,10 @@ class AutoBackend(nn.Module):
                 ex.input(self.net.input_names()[0], mat_in)
                 # WARNING: 'output_names' sorted as a temporary fix for https://github.com/pnnx/pnnx/issues/130
                 y = [np.array(ex.extract(x)[1])[None] for x in sorted(self.net.output_names())]
+
+        # rknn
+        elif getattr(self, 'rknn', False):
+            assert "for inference, please refer to https://github.com/airockchip/rknn_model_zoo/"
 
         # NVIDIA Triton Inference Server
         elif self.triton:

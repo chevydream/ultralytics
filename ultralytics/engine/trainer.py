@@ -725,6 +725,7 @@ class BaseTrainer:
         if ckpt is None or not self.resume:
             return
         best_fitness = 0.0
+        # ckpt['epoch'] = 295   # 若已经训练完成了, 还想继续训练时, 需要有这句才行!!!
         start_epoch = ckpt.get("epoch", -1) + 1
         if ckpt.get("optimizer", None) is not None:
             self.optimizer.load_state_dict(ckpt["optimizer"])  # optimizer

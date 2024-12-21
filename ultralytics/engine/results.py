@@ -534,6 +534,7 @@ class Results(SimpleClass):
 
         # Plot Detect results
         if pred_boxes is not None and show_boxes:
+            cnt = 0
             for i, d in enumerate(reversed(pred_boxes)):
                 c, d_conf, id = int(d.cls), float(d.conf) if conf else None, None if d.id is None else int(d.id.item())
                 name = ("" if id is None else f"id:{id} ") + names[c]
@@ -542,6 +543,7 @@ class Results(SimpleClass):
                 annotator.box_label(
                     box,
                     label,
+                    cnt,
                     color=colors(
                         c
                         if color_mode == "class"
@@ -554,6 +556,7 @@ class Results(SimpleClass):
                     ),
                     rotated=is_obb,
                 )
+                cnt = cnt + 1
 
         # Plot Classify results
         if pred_probs is not None and show_probs:

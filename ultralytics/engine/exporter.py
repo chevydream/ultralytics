@@ -97,6 +97,7 @@ from ultralytics.utils.files import file_size, spaces_in_path
 from ultralytics.utils.ops import Profile
 from ultralytics.utils.torch_utils import TORCH_1_13, get_latest_opset, select_device
 
+import global_var   # 两个都需要导入，否则会找不到get_value函数
 
 def export_formats():
     """Ultralytics YOLO export formats."""
@@ -116,6 +117,7 @@ def export_formats():
         ["MNN", "mnn", ".mnn", True, True],
         ["NCNN", "ncnn", "_ncnn_model", True, True],
         ["IMX", "imx", "_imx_model", True, True],
+        ["RKNN", "rknn", "_rknnopt.torchscript", True, False],
     ]
     return dict(zip(["Format", "Argument", "Suffix", "CPU", "GPU"], zip(*x)))
 
@@ -210,6 +212,7 @@ class Exporter:
             mnn,
             ncnn,
             imx,
+            rknn,
         ) = flags  # export booleans
         is_tf_format = any((saved_model, pb, tflite, edgetpu, tfjs))
 
@@ -382,6 +385,8 @@ class Exporter:
             f[12], _ = self.export_ncnn()
         if imx:
             f[13], _ = self.export_imx()
+        if rknn:  # RKNN
+            f[14], _ = self.export_rknn()
 
         # Finish
         f = [str(x) for x in f if x]  # filter out '' and None
@@ -443,6 +448,38 @@ class Exporter:
         else:
             ts.save(str(f), _extra_files=extra_files)
         return f, None
+
+    @try_export
+    def export_rknn(self, prefix=colorstr("RKNN:")):
+        """YOLO RKNN model export."""
+        LOGGER.info(f"\n{prefix} starting export with torch {torch.__version__}...")
+		
+        # 读取全局变量: 过滤标签
+        DaoChuFlag = global_var.get_value('DaoChuFlag', 2)
+	
+        # 之前用的导出: rknnOpt
+        if DaoChuFlag == 2 or DaoChuFlag == 3:
+            ts = torch.jit.trace(self.model, self.im, strict=False)
+            f = str(self.file).replace(self.file.suffix, f"_rknnopt.torchscript")
+            torch.jit.save(ts, str(f))
+
+        # 最新用的导出: rknnOnnx
+        if DaoChuFlag == 1 or DaoChuFlag == 3:
+            f = str(self.file).replace(self.file.suffix, f'.onnx')
+            opset_version = self.args.opset or get_latest_opset()
+            torch.onnx.export(
+                self.model,
+                self.im[0:1,:,:,:],
+                f,
+                verbose=False,
+                opset_version=12,
+                do_constant_folding=True,  # WARNING: DNN inference with torch>=1.12 may require do_constant_folding=False
+                input_names=['images'])
+
+        LOGGER.info(f"\n{prefix} feed {f} to RKNN-Toolkit or RKNN-Toolkit2 to generate RKNN model.\n" 
+                    "Refer https://github.com/airockchip/rknn_model_zoo/tree/main/examples/")
+        return f, None
+
 
     @try_export
     def export_onnx(self, prefix=colorstr("ONNX:")):
@@ -1431,3 +1468,18 @@ class IOSDetectModel(torch.nn.Module):
         """Normalize predictions of object detection model with input size-dependent factors."""
         xywh, cls = self.model(x)[0].transpose(0, 1).split((4, self.nc), 1)
         return cls, xywh * self.normalize  # confidence (3780, 80), coordinates (3780, 4)
+
+def export(cfg=DEFAULT_CFG):
+    """Export a YOLO model to a specific format."""
+    cfg.model = cfg.model or 'yolo11n.yaml'
+    cfg.format = cfg.format or 'torchscript'
+    from ultralytics import YOLO
+    model = YOLO(cfg.model)
+    model.export(**vars(cfg))
+
+if __name__ == '__main__':
+    """
+    CLI:
+    yolo mode=export model=yolo11n.yaml format=onnx
+    """
+    export()

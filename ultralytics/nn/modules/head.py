@@ -17,6 +17,7 @@ from .utils import bias_init_with_prob, linear_init
 
 __all__ = "Detect", "Segment", "Pose", "Classify", "OBB", "RTDETRDecoder", "v10Detect"
 
+import global_var   # 两个都需要导入，否则会找不到get_value函数
 
 class Detect(nn.Module):
     """YOLO Detect head for detection models."""
@@ -61,8 +62,32 @@ class Detect(nn.Module):
             self.one2one_cv2 = copy.deepcopy(self.cv2)
             self.one2one_cv3 = copy.deepcopy(self.cv3)
 
-    def forward(self, x):
+    def forward(self, x, task_type="Detect"):
         """Concatenates and returns predicted bounding boxes and class probabilities."""
+        if task_type in ['Pose', 'Obb']:
+            y = []
+            for i in range(self.nl):
+                y.append(torch.cat((self.cv2[i](x[i]), self.cv3[i](x[i])), 1))
+            return y              
+
+        # 读取全局变量: 过滤标签
+        DaoChuFlag = global_var.get_value('DaoChuFlag', 2)
+		
+        if self.export and self.format == "rknn":
+            y = []
+            for i in range(self.nl):
+                y.append(self.cv2[i](x[i]))
+                cls = torch.sigmoid(self.cv3[i](x[i]))
+                # 之前用的导出: rknnOpt
+                if DaoChuFlag == 2 or DaoChuFlag == 3:
+                    cls_sum = torch.clamp(y[-1].sum(1, keepdim=True), 0, 1)
+                # 最新用的导出: rknnOnnx
+                if DaoChuFlag == 1 or DaoChuFlag == 3:
+                    cls_sum = torch.clamp(cls.sum(1, keepdim=True), 0, 1)
+                y.append(cls)
+                y.append(cls_sum)
+            return y
+
         if self.end2end:
             return self.forward_end2end(x)
 
@@ -164,7 +189,10 @@ class Detect(nn.Module):
         """
         batch_size, anchors, _ = preds.shape  # i.e. shape(16,8400,84)
         boxes, scores = preds.split([4, nc], dim=-1)
-        index = scores.amax(dim=-1).topk(min(max_det, anchors))[1].unsqueeze(-1)
+        # 原代码, 转换时过不去, 改成了下面这句
+        # index = scores.amax(dim=-1).topk(min(max_det, anchors))[1].unsqueeze(-1)
+        max_scores, e = scores.max(dim=-1)
+        index = max_scores.topk(min(max_det, anchors))[1].unsqueeze(-1)
         boxes = boxes.gather(dim=1, index=index.repeat(1, 1, 4))
         scores = scores.gather(dim=1, index=index.repeat(1, 1, nc))
         scores, index = scores.flatten(1).topk(min(max_det, anchors))
@@ -190,10 +218,24 @@ class Segment(Detect):
         p = self.proto(x[0])  # mask protos
         bs = p.shape[0]  # batch size
 
-        mc = torch.cat([self.cv4[i](x[i]).view(bs, self.nm, -1) for i in range(self.nl)], 2)  # mask coefficients
+        if self.export and self.format == "rknn":
+            mc = [self.cv4[i](x[i]) for i in range(self.nl)]
+        else:
+            mc = torch.cat([self.cv4[i](x[i]).view(bs, self.nm, -1) for i in range(self.nl)], 2)  # mask coefficients
+
         x = Detect.forward(self, x)
         if self.training:
             return x, mc, p
+
+        if self.export and self.format == "rknn":
+            bo = len(x)//3
+            relocated = []
+            for i in range(len(mc)):
+                relocated.extend(x[i*bo:(i+1)*bo])
+                relocated.extend([mc[i]])
+            relocated.extend([p])
+            return relocated
+
         return (torch.cat([x, mc], 1), p) if self.export else (torch.cat([x[0], mc], 1), (x[1], mc, p))
 
 
@@ -212,6 +254,11 @@ class OBB(Detect):
         """Concatenates and returns predicted bounding boxes and class probabilities."""
         bs = x[0].shape[0]  # batch size
         angle = torch.cat([self.cv4[i](x[i]).view(bs, self.ne, -1) for i in range(self.nl)], 2)  # OBB theta logits
+
+        if self.export and self.format == 'rknn':
+            x = Detect.forward(self, x, "Obb")
+            return [x, angle.sigmoid()]
+
         # NOTE: set `angle` as an attribute so that `decode_bboxes` could use it.
         angle = (angle.sigmoid() - 0.25) * math.pi  # [-pi/4, 3pi/4]
         # angle = angle.sigmoid() * math.pi / 2  # [0, pi/2]
@@ -243,7 +290,20 @@ class Pose(Detect):
         """Perform forward pass through YOLO model and return predictions."""
         bs = x[0].shape[0]  # batch size
         kpt = torch.cat([self.cv4[i](x[i]).view(bs, self.nk, -1) for i in range(self.nl)], -1)  # (bs, 17*3, h*w)
-        x = Detect.forward(self, x)
+
+        if self.export and self.format == 'rknn':
+            output_x = Detect.forward(self, x, 'Pose')
+            y = []
+            y.append(output_x)
+            self.export = False
+            x = Detect.forward(self, x)
+            self.export = True
+            pred_kpt = self.kpts_decode(bs, kpt)
+            y.append(pred_kpt)
+            return y
+        else:
+            x = Detect.forward(self, x)
+
         if self.training:
             return x, kpt
         pred_kpt = self.kpts_decode(bs, kpt)
@@ -269,6 +329,8 @@ class Pose(Detect):
                 a = (y[:, :, :2] * 2.0 + (self.anchors - 0.5)) * self.strides
             if ndim == 3:
                 a = torch.cat((a, y[:, :, 2:3].sigmoid()), 2)
+            if self.export and self.format == 'rknn':
+                return a
             return a.view(bs, self.nk, -1)
         else:
             y = kpts.clone()

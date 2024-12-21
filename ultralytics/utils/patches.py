@@ -53,6 +53,7 @@ def imshow(winname: str, mat: np.ndarray):
         winname (str): Name of the window.
         mat (np.ndarray): Image to be shown.
     """
+    cv2.namedWindow(winname.encode("unicode_escape").decode(), cv2.WINDOW_FREERATIO)
     _imshow(winname.encode("unicode_escape").decode(), mat)
 
 

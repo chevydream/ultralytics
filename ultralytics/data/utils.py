@@ -34,6 +34,8 @@ from ultralytics.utils.checks import check_file, check_font, is_ascii
 from ultralytics.utils.downloads import download, safe_download, unzip_file
 from ultralytics.utils.ops import segments2boxes
 
+import global_var   # 两个都需要导入，否则会找不到get_value函数
+
 HELP_URL = "See https://docs.ultralytics.com/datasets for dataset formatting guidance."
 IMG_FORMATS = {"bmp", "dng", "jpeg", "jpg", "mpo", "png", "tif", "tiff", "webp", "pfm", "heic"}  # image suffixes
 VID_FORMATS = {"asf", "avi", "gif", "m4v", "mkv", "mov", "mp4", "mpeg", "mpg", "ts", "wmv", "webm"}  # video suffixes
@@ -100,6 +102,10 @@ def verify_image_label(args):
     im_file, lb_file, prefix, keypoint, num_cls, nkpt, ndim = args
     # Number (missing, found, empty, corrupt), message, segments, keypoints
     nm, nf, ne, nc, msg, segments, keypoints = 0, 0, 0, 0, "", [], None
+
+    # 读取全局变量: 过滤标签
+    GuolvFlag = global_var.get_value('GuolvFlag', 0)
+
     try:
         # Verify images
         im = Image.open(im_file)
@@ -119,7 +125,32 @@ def verify_image_label(args):
         if os.path.isfile(lb_file):
             nf = 1  # label found
             with open(lb_file) as f:
-                lb = [x.split() for x in f.read().strip().splitlines() if len(x)]
+                # 原始代码：加载全部样本标签
+                if GuolvFlag == 1:
+                    lb = [x.split() for x in f.read().strip().splitlines() if len(x)]
+
+                # 修改：门架 加载部分样本（车轮）标签
+                elif GuolvFlag == 2:
+                    lb = [x.split() for x in f.read().strip().splitlines() if len(x) and x[0] == "8"]
+                # 修改：门架 加载部分样本(车型 + 危险品)标签
+                elif GuolvFlag == 3:
+                    lb = [x.split() for x in f.read().strip().splitlines() if len(x) and x[0] != "8"]
+
+                # 修改：G3加载部分样本（车轮）标签
+                elif GuolvFlag == 4:
+                    lb = [x.split() for x in f.read().strip().splitlines() if len(x) and x[:2] == "31"]
+                # 修改：G3加载部分样本（车轮 + 后视镜）标签
+                elif GuolvFlag == 5:
+                    lb = [x.split() for x in f.read().strip().splitlines() if len(x) and (x[:2] == "30" or x[:2] == "31")]
+                # 修改：G3加载部分样本（车型 + 危险品）标签
+                elif GuolvFlag == 6:# 屏蔽: 轮,hsj,以及非高速(物流园)车辆：铲车，叉车，小三轮，人三轮，大三轮
+                    lb = [x.split() for x in f.read().strip().splitlines() if len(x) and x[:2] != "30" and x[:2] != "31"
+                          and x[:2] != "40" and x[:2] != "41" and x[:2] != "42" and x[:2] != "43" and x[:2] != "44"]
+
+                # 原始代码：加载全部样本标签
+                else:
+                    lb = [x.split() for x in f.read().strip().splitlines() if len(x)]
+
                 if any(len(x) > 6 for x in lb) and (not keypoint):  # is segment
                     classes = np.array([x[0] for x in lb], dtype=np.float32)
                     segments = [np.array(x[1:], dtype=np.float32).reshape(-1, 2) for x in lb]  # (cls, xy1...)

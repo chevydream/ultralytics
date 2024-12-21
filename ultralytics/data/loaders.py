@@ -421,7 +421,8 @@ class LoadImagesAndVideos:
                     with Image.open(path) as img:
                         im0 = cv2.cvtColor(np.asarray(img), cv2.COLOR_RGB2BGR)  # convert image to BGR nparray
                 else:
-                    im0 = imread(path)  # BGR
+                    # im0 = imread(path)  # BGR 解决加载图片时的中文路径乱码问题
+                    im0 = cv2.imdecode(np.fromfile(path, dtype=np.uint8), -1) # BGR
                 if im0 is None:
                     LOGGER.warning(f"WARNING ⚠️ Image Read Error {path}")
                 else:

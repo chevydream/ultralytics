@@ -386,7 +386,9 @@ class BasePredictor:
 
         # Save images
         else:
-            cv2.imwrite(str(Path(save_path).with_suffix(".jpg")), im)  # save to JPG for best support
+            #解决保存图片时的中文路径乱码问题
+            # cv2.imwrite(str(Path(save_path).with_suffix(".jpg")), im)  # save to JPG for best support
+            cv2.imencode('.jpg', im)[1].tofile(str(Path(save_path).with_suffix(".jpg")))  # save to JPG for best support
 
     def show(self, p=""):
         """Display an image in a window using the OpenCV imshow function."""
